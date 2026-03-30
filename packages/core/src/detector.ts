@@ -269,7 +269,49 @@ export function detect(
     );
   }
 
-  const clusters = agglomerativeClusters(simMatrix, similarityThreshold, maxThreads);
+  let clusters = agglomerativeClusters(simMatrix, similarityThreshold, maxThreads);
+
+  // Post-processing: merge singleton clusters into their nearest neighbor
+  // This prevents orphan threads from single short messages like "Yeah" or "Got it"
+  if (clusters.length > 1) {
+    const merged: number[][] = [];
+    const singletons: number[][] = [];
+
+    for (const cluster of clusters) {
+      if (cluster.length === 1) {
+        singletons.push(cluster);
+      } else {
+        merged.push(cluster);
+      }
+    }
+
+    // Merge each singleton into its closest multi-chunk cluster
+    for (const singleton of singletons) {
+      const sIdx = singleton[0];
+      if (merged.length === 0) {
+        // No multi-chunk clusters exist, keep singleton as-is
+        merged.push(singleton);
+        continue;
+      }
+      let bestCluster = 0;
+      let bestSim = -Infinity;
+      for (let ci = 0; ci < merged.length; ci++) {
+        // Average similarity between singleton and all members of the cluster
+        let sum = 0;
+        for (const member of merged[ci]) {
+          sum += simMatrix[sIdx][member];
+        }
+        const avg = sum / merged[ci].length;
+        if (avg > bestSim) {
+          bestSim = avg;
+          bestCluster = ci;
+        }
+      }
+      merged[bestCluster].push(sIdx);
+    }
+
+    clusters = merged;
+  }
 
   const allTokens = chunks.map((c) => tokenize(chunkText(c)));
 
