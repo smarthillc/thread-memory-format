@@ -64,11 +64,14 @@ export interface ContextMessage {
   };
 }
 
+export type Summarizer = (text: string, tier: ImportanceTier) => Promise<string>;
+
 export interface CompressOptions {
   maxThreads?: number;
   similarityThreshold?: number;
   maxKeyFacts?: number;
   embeddings?: number[][];
+  summarizer?: Summarizer;
 }
 
 export interface DecompressOptions {

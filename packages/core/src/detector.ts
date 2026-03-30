@@ -19,6 +19,33 @@ function chunkText(chunk: ScoredChunk): string {
   return chunk.messages.map((m) => m.content).join(" ");
 }
 
+// Extract named entities (capitalized words, technical terms)
+const ENTITY_RE = /\b[A-Z][a-zA-Z0-9]*(?:[-_.][A-Za-z0-9]+)*\b/g;
+const ENTITY_STOP = new Set([
+  "I", "The", "This", "That", "It", "He", "She", "We", "They",
+  "What", "How", "Why", "When", "Where", "Which", "Here", "There",
+  "First", "Then", "Next", "Also", "But", "And", "Or", "If",
+  "Yes", "No", "Ok", "Sure", "Thanks", "Hello", "Hi", "Hey",
+  "For", "Use", "Don", "Set", "Let", "Now", "Back", "Good",
+  "Actually", "Definitely", "Perfect", "Cool", "Great", "Start",
+]);
+
+function extractEntitiesFromText(text: string): Set<string> {
+  const matches = text.match(ENTITY_RE) ?? [];
+  return new Set(matches.filter((e) => !ENTITY_STOP.has(e)));
+}
+
+// Jaccard similarity between two sets
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 0;
+  let intersection = 0;
+  for (const item of a) {
+    if (b.has(item)) intersection++;
+  }
+  const union = a.size + b.size - intersection;
+  return union > 0 ? intersection / union : 0;
+}
+
 // Build TF-IDF vectors for a set of documents
 function buildTfidf(docs: string[][]): Map<string, number>[] {
   const n = docs.length;
@@ -136,38 +163,63 @@ function agglomerativeClusters(
   return [...active].map((i) => clusters[i]);
 }
 
-// Extract top distinctive terms for a cluster as its label
+// Generate a readable label for a cluster using named entities first, falling back to distinctive terms
 function labelForCluster(
   chunks: ScoredChunk[],
   clusterIndices: number[],
   allTokens: string[][],
+  allEntities: Set<string>[],
 ): string {
-  // Collect token frequencies within this cluster
+  // Prefer entity-based labels — they're the actual proper nouns
+  const clusterEntityFreq = new Map<string, number>();
+  for (const idx of clusterIndices) {
+    for (const ent of allEntities[idx]) {
+      clusterEntityFreq.set(ent, (clusterEntityFreq.get(ent) ?? 0) + 1);
+    }
+  }
+
+  // Score entities: prefer frequent within cluster AND distinctive (not in every cluster)
+  const globalEntityFreq = new Map<string, number>();
+  for (const entities of allEntities) {
+    for (const ent of entities) {
+      globalEntityFreq.set(ent, (globalEntityFreq.get(ent) ?? 0) + 1);
+    }
+  }
+
+  const entityScores: [string, number][] = [];
+  for (const [ent, cFreq] of clusterEntityFreq) {
+    const gFreq = globalEntityFreq.get(ent) ?? 1;
+    // Boost entities that are frequent in this cluster but rare globally
+    entityScores.push([ent, (cFreq * cFreq) / gFreq]);
+  }
+  entityScores.sort((a, b) => b[1] - a[1]);
+
+  const topEntities = entityScores.slice(0, 3).map(([e]) => e);
+  if (topEntities.length > 0) {
+    return topEntities.join(" + ");
+  }
+
+  // Fallback to TF-IDF terms
   const clusterFreq = new Map<string, number>();
   for (const idx of clusterIndices) {
     for (const t of allTokens[idx]) {
       clusterFreq.set(t, (clusterFreq.get(t) ?? 0) + 1);
     }
   }
-
-  // Global frequency
   const globalFreq = new Map<string, number>();
   for (const tokens of allTokens) {
     for (const t of tokens) {
       globalFreq.set(t, (globalFreq.get(t) ?? 0) + 1);
     }
   }
-
-  // Score terms by ratio of cluster freq to global freq
   const scores: [string, number][] = [];
   for (const [term, cFreq] of clusterFreq) {
     const gFreq = globalFreq.get(term) ?? 1;
     scores.push([term, cFreq / gFreq]);
   }
   scores.sort((a, b) => b[1] - a[1]);
-
   const topTerms = scores.slice(0, 3).map(([t]) => t);
-  return topTerms.join(", ") || "general";
+  return topTerms.join(" + ") || "general";
 }
 
 function threadId(label: string, index: number): string {
@@ -189,21 +241,31 @@ export function detect(
   // Build similarity matrix
   let simMatrix: number[][];
 
+  // Extract entities per chunk for entity-based similarity boosting
+  const chunkEntities = chunks.map((c) => extractEntitiesFromText(chunkText(c)));
+
   if (embeddings && embeddings.length === n) {
-    // Use provided embeddings
+    // Use provided embeddings + entity boost
     simMatrix = Array.from({ length: n }, (_, i) =>
-      Array.from({ length: n }, (_, j) =>
-        i === j ? 1 : cosineSimEmbeddings(embeddings[i], embeddings[j]),
-      ),
+      Array.from({ length: n }, (_, j) => {
+        if (i === j) return 1;
+        const embSim = cosineSimEmbeddings(embeddings[i], embeddings[j]);
+        const entSim = jaccardSimilarity(chunkEntities[i], chunkEntities[j]);
+        return embSim * 0.6 + entSim * 0.4;
+      }),
     );
   } else {
-    // Fall back to TF-IDF
+    // Blend TF-IDF + entity Jaccard similarity
     const allTokens = chunks.map((c) => tokenize(chunkText(c)));
     const vectors = buildTfidf(allTokens);
     simMatrix = Array.from({ length: n }, (_, i) =>
-      Array.from({ length: n }, (_, j) =>
-        i === j ? 1 : cosineSimilarity(vectors[i], vectors[j]),
-      ),
+      Array.from({ length: n }, (_, j) => {
+        if (i === j) return 1;
+        const tfidfSim = cosineSimilarity(vectors[i], vectors[j]);
+        const entSim = jaccardSimilarity(chunkEntities[i], chunkEntities[j]);
+        // Entity overlap is a strong signal — weight it heavily
+        return tfidfSim * 0.4 + entSim * 0.6;
+      }),
     );
   }
 
@@ -212,7 +274,7 @@ export function detect(
   const allTokens = chunks.map((c) => tokenize(chunkText(c)));
 
   return clusters.map((indices, clusterIdx) => {
-    const label = labelForCluster(chunks, indices, allTokens);
+    const label = labelForCluster(chunks, indices, allTokens, chunkEntities);
     const chunkIds = indices.map((i) => chunks[i].id);
     const highestTier = indices.reduce<ImportanceTier>((best, idx) => {
       const tier = chunks[idx].tier;

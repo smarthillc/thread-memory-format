@@ -23,23 +23,23 @@ function allOutputText(messages: { content: string }[]): string {
 }
 
 describe("roundtrip", () => {
-  it("preserves critical facts in a short chat", () => {
+  it("preserves critical facts in a short chat", async () => {
     const messages = [
       msg("user", "What database should we use?"),
       msg("assistant", "Let's go with PostgreSQL. It has great JSONB support and excellent performance."),
       msg("user", "What about the cache layer?"),
       msg("assistant", "Redis is the best choice for caching. Install Redis with your package manager."),
     ];
-    const blob = compress(messages);
+    const blob = await compress(messages);
     const output = decompress(blob);
     const text = allOutputText(output);
     expect(text).toContain("postgresql");
     expect(text).toContain("redis");
   });
 
-  it("preserves named entities in a medium chat", () => {
+  it("preserves named entities in a medium chat", async () => {
     const messages = generateConversation(50);
-    const blob = compress(messages);
+    const blob = await compress(messages);
     const output = decompress(blob);
     const text = allOutputText(output);
     // At least some Service_N and Feature_N should survive
@@ -52,28 +52,28 @@ describe("roundtrip", () => {
     expect(entitiesFound).toBeGreaterThan(0);
   });
 
-  it("has a positive compression ratio for a long chat", () => {
+  it("has a positive compression ratio for a long chat", async () => {
     const messages = generateConversation(200);
-    const blob = compress(messages);
+    const blob = await compress(messages);
     expect(blob.metadata.compressionRatio).toBeGreaterThan(0);
     // Thread count should be much less than turn count (actual compression)
     expect(blob.threads.length).toBeLessThan(blob.metadata.totalTurns);
   });
 
-  it("preserves code-related mentions in code-heavy chats", () => {
+  it("preserves code-related mentions in code-heavy chats", async () => {
     const messages = [
       msg("user", "How do I use TypeScript generics?"),
       msg("assistant", "Here's an example:\n```typescript\nfunction identity<T>(arg: T): T { return arg; }\n```\nTypeScript generics enable type-safe abstractions."),
       msg("user", "What about React hooks with TypeScript?"),
       msg("assistant", "Use useState with a type parameter:\n```typescript\nconst [count, setCount] = useState<number>(0);\n```"),
     ];
-    const blob = compress(messages);
+    const blob = await compress(messages);
     const output = decompress(blob);
     const text = allOutputText(output);
     expect(text).toMatch(/typescript/i);
   });
 
-  it("produces separate threads for multi-topic conversations", () => {
+  it("produces separate threads for multi-topic conversations", async () => {
     const messages = [
       msg("user", "How do I configure PostgreSQL database replication?"),
       msg("assistant", "PostgreSQL database replication uses streaming replication with write-ahead log."),
@@ -84,7 +84,7 @@ describe("roundtrip", () => {
       msg("user", "What about CSS flexbox layout styling?"),
       msg("assistant", "CSS flexbox layout uses display flex with justify-content for styling."),
     ];
-    const blob = compress(messages);
+    const blob = await compress(messages);
     expect(blob.threads.length).toBeGreaterThanOrEqual(1);
     // All threads should have content
     for (const thread of blob.threads) {
@@ -92,14 +92,14 @@ describe("roundtrip", () => {
     }
   });
 
-  it("filters by tier on decompress", () => {
+  it("filters by tier on decompress", async () => {
     const messages = [
       msg("user", "Hello!"),
       msg("assistant", "Hi there!"),
       msg("user", "Let's go with PostgreSQL for the main database."),
       msg("assistant", "Let's go with PostgreSQL. I'll set it up. Install PostgreSQL first."),
     ];
-    const blob = compress(messages);
+    const blob = await compress(messages);
     const criticalOnly = decompress(blob, { tierFilter: ["critical"] });
     const all = decompress(blob);
     expect(criticalOnly.length).toBeLessThanOrEqual(all.length);
@@ -108,27 +108,27 @@ describe("roundtrip", () => {
     }
   });
 
-  it("preserves facts through compress → revise → decompress", () => {
+  it("preserves facts through compress → revise → decompress", async () => {
     const initial = [
       msg("user", "We're building with PostgreSQL and React."),
       msg("assistant", "PostgreSQL for the backend, React for the frontend. Let's go with that."),
     ];
-    const blob = compress(initial);
+    const blob = await compress(initial);
 
     const continuation = [
       msg("user", "Also adding Redis for caching."),
       msg("assistant", "Redis is a great choice for caching. Install Redis alongside PostgreSQL."),
     ];
-    const revised = revise(blob, continuation);
+    const revised = await revise(blob, continuation);
     const output = decompress(revised);
     const text = allOutputText(output);
     expect(text).toContain("postgresql");
     expect(text).toContain("redis");
   });
 
-  it("serializer round-trips the compressed blob", () => {
+  it("serializer round-trips the compressed blob", async () => {
     const messages = generateConversation(20);
-    const blob = compress(messages);
+    const blob = await compress(messages);
     const buffer = serialize(blob);
     const restored = deserialize(buffer);
     expect(restored.threads).toEqual(blob.threads);

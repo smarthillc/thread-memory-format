@@ -38,7 +38,7 @@ export function createTools(storage: StorageAdapter) {
     },
     async ({ messages, conversationId }) => {
       try {
-        const blob = compress(messages as Message[]);
+        const blob = await compress(messages as Message[]);
         if (conversationId) {
           blob.conversationId = conversationId;
         }
@@ -110,7 +110,7 @@ export function createTools(storage: StorageAdapter) {
       try {
         const buffer = await storage.read(blobId);
         const blob = deserialize(buffer);
-        const revised = revise(blob, newMessages as Message[]);
+        const revised = await revise(blob, newMessages as Message[]);
         const newBuffer = serialize(revised);
         await storage.write(blobId, newBuffer);
         return {

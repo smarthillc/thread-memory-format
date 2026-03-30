@@ -17,18 +17,18 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-export function compress(
+export async function compress(
   messages: Message[],
   options: CompressOptions = {},
-): TmfBlob {
-  const { maxThreads = 50, similarityThreshold, maxKeyFacts, embeddings } = options;
+): Promise<TmfBlob> {
+  const { maxThreads = 50, similarityThreshold, maxKeyFacts, embeddings, summarizer } = options;
 
   const chunks = chunk(messages);
   const scored = chunks.map((c) => score(c));
   const threads = detect(scored, { maxThreads, similarityThreshold, embeddings });
 
-  const summaries = threads.map((t) =>
-    compressThread(t, scored, { maxKeyFacts }),
+  const summaries = await Promise.all(
+    threads.map((t) => compressThread(t, scored, { maxKeyFacts, summarizer })),
   );
 
   const totalTokensOriginal = messages.reduce(

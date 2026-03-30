@@ -62,11 +62,11 @@ function trimSummary(summary: ThreadSummary, maxTokens: number): ThreadSummary {
   return result;
 }
 
-export function revise(
+export async function revise(
   existing: TmfBlob,
   newMessages: Message[],
   options: ReviseOptions = {},
-): TmfBlob {
+): Promise<TmfBlob> {
   const { maxSummaryTokens = 2000, similarityThreshold = 0.08 } = options;
 
   if (newMessages.length === 0) return existing;
@@ -94,7 +94,7 @@ export function revise(
     if (bestIdx >= 0 && bestScore > 0.1) {
       // Merge into existing thread
       const existingSummary = updatedThreads[bestIdx];
-      const newSummary = compressThread(newThread, newChunks);
+      const newSummary = await compressThread(newThread, newChunks);
 
       const merged: ThreadSummary = {
         ...existingSummary,
@@ -120,7 +120,7 @@ export function revise(
       matched.add(bestIdx);
     } else {
       // Add as new thread
-      const newSummary = compressThread(newThread, newChunks);
+      const newSummary = await compressThread(newThread, newChunks);
       updatedThreads.push(trimSummary(newSummary, maxSummaryTokens));
     }
   }

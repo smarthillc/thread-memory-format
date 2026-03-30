@@ -13,8 +13,8 @@ const conversationArb = fc.array(messageArb, { minLength: 4, maxLength: 50 });
 describe("properties", () => {
   it("compression always produces a valid ratio and fewer threads than turns", () => {
     fc.assert(
-      fc.property(conversationArb, (messages) => {
-        const blob = compress(messages);
+      fc.asyncProperty(conversationArb, async (messages) => {
+        const blob = await compress(messages);
         // Ratio is always a positive number
         expect(blob.metadata.compressionRatio).toBeGreaterThan(0);
         // Thread count should be bounded — actual structural compression
@@ -26,8 +26,8 @@ describe("properties", () => {
 
   it("thread count is bounded by maxThreads", () => {
     fc.assert(
-      fc.property(conversationArb, (messages) => {
-        const blob = compress(messages, { maxThreads: 20 });
+      fc.asyncProperty(conversationArb, async (messages) => {
+        const blob = await compress(messages, { maxThreads: 20 });
         expect(blob.threads.length).toBeLessThanOrEqual(20);
       }),
       { numRuns: 50 },
@@ -36,8 +36,8 @@ describe("properties", () => {
 
   it("every thread has at least one keyFact", () => {
     fc.assert(
-      fc.property(conversationArb, (messages) => {
-        const blob = compress(messages);
+      fc.asyncProperty(conversationArb, async (messages) => {
+        const blob = await compress(messages);
         for (const thread of blob.threads) {
           expect(thread.keyFacts.length).toBeGreaterThanOrEqual(1);
         }
@@ -48,9 +48,9 @@ describe("properties", () => {
 
   it("revision never produces a blob with fewer threads than the original", () => {
     fc.assert(
-      fc.property(conversationArb, conversationArb, (initial, continuation) => {
-        const blob = compress(initial);
-        const revised = revise(blob, continuation);
+      fc.asyncProperty(conversationArb, conversationArb, async (initial, continuation) => {
+        const blob = await compress(initial);
+        const revised = await revise(blob, continuation);
         expect(revised.threads.length).toBeGreaterThanOrEqual(blob.threads.length);
       }),
       { numRuns: 30 },

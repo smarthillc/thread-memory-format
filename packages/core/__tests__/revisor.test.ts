@@ -36,24 +36,24 @@ function makeBlob(overrides?: Partial<TmfBlob>): TmfBlob {
 }
 
 describe("revisor", () => {
-  it("returns blob unchanged for empty new messages", () => {
+  it("returns blob unchanged for empty new messages", async () => {
     const blob = makeBlob();
-    const result = revise(blob, []);
+    const result = await revise(blob, []);
     expect(result).toEqual(blob);
   });
 
-  it("adds a new thread for unrelated content", () => {
+  it("adds a new thread for unrelated content", async () => {
     const blob = makeBlob();
-    const result = revise(blob, [
+    const result = await revise(blob, [
       msg("user", "How do I configure nginx reverse proxy?"),
       msg("assistant", "Nginx uses proxy_pass directive for reverse proxy configuration."),
     ]);
     expect(result.threads.length).toBeGreaterThan(blob.threads.length);
   });
 
-  it("updates existing thread for related content", () => {
+  it("updates existing thread for related content", async () => {
     const blob = makeBlob();
-    const result = revise(blob, [
+    const result = await revise(blob, [
       msg("user", "How do I add indexes to PostgreSQL database?"),
       msg("assistant", "PostgreSQL supports B-tree indexes. Use CREATE INDEX on your PostgreSQL database table."),
     ]);
@@ -70,10 +70,10 @@ describe("revisor", () => {
     );
   });
 
-  it("deduplicates facts on merge", () => {
+  it("deduplicates facts on merge", async () => {
     const blob = makeBlob();
     blob.threads[0].keyFacts = ["Using PostgreSQL for the database"];
-    const result = revise(blob, [
+    const result = await revise(blob, [
       msg("user", "Remind me, what database are we using?"),
       msg("assistant", "We're using PostgreSQL for the database. It's a great choice."),
     ]);
@@ -84,14 +84,14 @@ describe("revisor", () => {
     }
   });
 
-  it("enforces size cap on merged summary", () => {
+  it("enforces size cap on merged summary", async () => {
     const blob = makeBlob();
     // Add lots of facts to existing thread
     blob.threads[0].keyFacts = Array.from(
       { length: 50 },
       (_, i) => `Fact number ${i} about PostgreSQL database configuration and optimization strategies`,
     );
-    const result = revise(
+    const result = await revise(
       blob,
       [
         msg("user", "More PostgreSQL database configuration details?"),
@@ -106,10 +106,10 @@ describe("revisor", () => {
     }
   });
 
-  it("extends turn range on merge", () => {
+  it("extends turn range on merge", async () => {
     const blob = makeBlob();
     blob.threads[0].turnRange = [0, 5];
-    const result = revise(blob, [
+    const result = await revise(blob, [
       msg("user", "One more thing about PostgreSQL database."),
       msg("assistant", "Sure, PostgreSQL database supports JSONB columns."),
     ]);
@@ -121,10 +121,10 @@ describe("revisor", () => {
     expect(result.metadata.totalTurns).toBeGreaterThan(blob.metadata.totalTurns);
   });
 
-  it("merges entities from both old and new", () => {
+  it("merges entities from both old and new", async () => {
     const blob = makeBlob();
     blob.threads[0].entities = ["PostgreSQL"];
-    const result = revise(blob, [
+    const result = await revise(blob, [
       msg("user", "Can PostgreSQL work with Redis for caching?"),
       msg("assistant", "Yes, PostgreSQL and Redis complement each other. Redis handles caching, PostgreSQL handles persistence."),
     ]);
@@ -133,10 +133,10 @@ describe("revisor", () => {
     expect(allEntities).toContain("Redis");
   });
 
-  it("increments revision counter on update", () => {
+  it("increments revision counter on update", async () => {
     const blob = makeBlob();
     blob.threads[0].revision = 2;
-    const result = revise(blob, [
+    const result = await revise(blob, [
       msg("user", "More about PostgreSQL database performance?"),
       msg("assistant", "PostgreSQL database connection pooling improves PostgreSQL performance significantly."),
     ]);
@@ -147,7 +147,7 @@ describe("revisor", () => {
     }
   });
 
-  it("handles multiple threads being updated", () => {
+  it("handles multiple threads being updated", async () => {
     const blob = makeBlob({
       threads: [
         {
@@ -176,7 +176,7 @@ describe("revisor", () => {
         },
       ],
     });
-    const result = revise(blob, [
+    const result = await revise(blob, [
       msg("user", "Update on the PostgreSQL database migration"),
       msg("assistant", "PostgreSQL database migration is ready"),
       msg("user", "And the React frontend component updates?"),
