@@ -6,3 +6,4 @@ export { compressThread, type CompressorOptions } from "./compressor.js";
 export { serialize, deserialize } from "./serializer.js";
 export { revise, type ReviseOptions } from "./revisor.js";
 export { compress, decompress, threadStatus } from "./pipeline.js";
+export { createClaudeSummarizer } from "./summarizer.js";

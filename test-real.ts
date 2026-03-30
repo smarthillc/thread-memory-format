@@ -1,5 +1,5 @@
-import { compress, decompress, revise, threadStatus, serialize } from "./packages/core/src/index.js";
-import type { Message } from "./packages/core/src/types.js";
+import { compress, decompress, revise, threadStatus, serialize, createClaudeSummarizer } from "./packages/core/src/index.js";
+import type { Message, Summarizer } from "./packages/core/src/types.js";
 
 // Real conversation: multi-topic dev session
 const conversation: Message[] = [
@@ -23,11 +23,21 @@ const conversation: Message[] = [
   { role: "assistant", content: "pdf.js (via pdfjs-dist) for rendering — it's Mozilla's battle-tested PDF renderer. react-pdf is a wrapper around it but adds abstraction you don't need for an editor. Render each page to a canvas, then overlay absolutely-positioned contenteditable divs for the text fields. This gives you pixel-perfect PDF display with editable overlays." },
 ];
 
+const useLLM = process.argv.includes("--llm");
+let summarizer: Summarizer | undefined;
+
+if (useLLM) {
+  console.log("=== USING CLAUDE SUMMARIZER ===\n");
+  summarizer = createClaudeSummarizer();
+} else {
+  console.log("=== EXTRACTIVE MODE (use --llm for Claude summarizer) ===\n");
+}
+
 console.log("=== COMPRESSING REAL CONVERSATION ===\n");
 console.log(`Input: ${conversation.length} messages`);
 console.log(`Input tokens (est): ${conversation.reduce((a, m) => a + Math.ceil(m.content.length / 4), 0)}`);
 
-const blob = await compress(conversation);
+const blob = await compress(conversation, { summarizer });
 console.log(`\nThreads detected: ${blob.threads.length}`);
 console.log(`Compression ratio: ${blob.metadata.compressionRatio.toFixed(2)}x`);
 console.log(`Original tokens: ${blob.metadata.totalTokensOriginal}`);
